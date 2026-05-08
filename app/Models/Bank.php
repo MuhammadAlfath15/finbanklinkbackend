@@ -6,6 +6,14 @@ use Illuminate\Database\Eloquent\Model;
 
 class Bank extends Model
 {
-    // Tambahkan baris ini agar data bisa masuk
-    protected $fillable = ['nama_bank', 'nama_produk', 'bunga', 'cicilan', 'skor_kecocokan', 'deskripsi'];
+    protected $fillable = [
+        'nama_bank', 'nama_produk', 'bunga', 'cicilan',
+        'skor_kecocokan', 'deskripsi',
+        'plafon_min', 'plafon_max', 'tenor_min', 'tenor_max',
+        'bunga_persen', 'syarat',
+    ];
+
+    protected $casts = [
+        'syarat' => 'array',
+    ];
 }

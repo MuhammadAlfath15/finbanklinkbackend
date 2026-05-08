@@ -40,33 +40,35 @@ class AuthController extends Controller
 
    public function login(Request $request)
 {
-    // 1. Validasi input
-    $request->validate([
-        'email' => 'required|email',
+    // 1. Validasi input — pakai Validator::make agar bisa return JSON, bukan redirect
+    $validator = Validator::make($request->all(), [
+        'email'    => 'required|email',
         'password' => 'required',
     ]);
 
+    if ($validator->fails()) {
+        return response()->json(['message' => $validator->errors()->first()], 422);
+    }
+
     $credentials = $request->only('email', 'password');
 
-    // 2. Coba login (Auth::attempt otomatis nge-hash input password dan mencocokkan)
+    // 2. Coba login
     if (Auth::attempt($credentials)) {
-        $user = Auth::user();
-        
-        // Ganti baris 55 sampai 59 di screenshot lu dengan ini:
-$token = $user->createToken('auth_token')->plainTextToken; // Tambahkan ini buat generate token
+        $user  = Auth::user();
+        $token = $user->createToken('auth_token')->plainTextToken;
 
-return response()->json([
-    'success' => true,
-    'message' => 'Login berhasil',
-    'token'   => $token,      // Harus dikirim ke React
-    'role'    => $user->role, // Harus dikirim biar React bisa seleksi dashboard
-    'user'    => $user
-], 200);
+        return response()->json([
+            'success' => true,
+            'message' => 'Login berhasil',
+            'token'   => $token,
+            'role'    => $user->role ?? 'user', // fallback 'user' kalau kolom role null
+            'user'    => $user,
+        ], 200);
     }
 
     // 3. Jika gagal
     return response()->json([
-        'message' => 'Email atau Password salah!'
+        'message' => 'Email atau Password salah!',
     ], 401);
 }
 
