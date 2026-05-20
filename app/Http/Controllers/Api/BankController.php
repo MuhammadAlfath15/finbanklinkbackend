@@ -10,10 +10,19 @@ class BankController extends Controller
 {
     public function index()
     {
-        // Mengambil semua data bank dari database
-        $banks = Bank::all();
-        
-        // Mengirim data tersebut ke React dalam format JSON
+        $banks = Bank::query()
+            ->with('categoryRef:id,name,slug,sort_order')
+            ->orderBy('category_id')
+            ->orderByDesc('id')
+            ->get()
+            ->map(function (Bank $bank) {
+                $arr = $bank->toArray();
+                $arr['category_name'] = $bank->categoryRef?->name ?? $bank->category ?? 'terdaftar';
+                $arr['category_slug'] = $bank->categoryRef?->slug ?? null;
+                $arr['category_sort_order'] = $bank->categoryRef?->sort_order ?? 999;
+                return $arr;
+            });
+
         return response()->json($banks);
     }
 }

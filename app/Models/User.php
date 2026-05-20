@@ -12,9 +12,6 @@ use Laravel\Sanctum\HasApiTokens;
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
-    use HasFactory, Notifiable;
-
-    // TAMBAHKAN HasApiTokens DI SINI
     use HasApiTokens, HasFactory, Notifiable;
 
     /**
@@ -28,7 +25,9 @@ class User extends Authenticatable
         'password',
         'phone',
         'bio',
+        'avatar',
         'role',
+        'bank_id',
     ];
 
     /**

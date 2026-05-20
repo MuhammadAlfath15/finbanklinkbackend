@@ -30,7 +30,6 @@ class OtpController extends Controller
 
         Log::info('OtpController@sendLoanOtp: dipanggil', [
             'user_id' => $user->id,
-            'email'   => $user->email,
             'phone'   => $user->phone ?? 'NULL',
         ]);
 
