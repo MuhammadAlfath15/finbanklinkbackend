@@ -151,6 +151,8 @@ class SubmissionController extends Controller
             'disetujui'   => 'Disetujui',
             'ditolak'     => 'Ditolak',
             'dibatalkan'  => 'Dibatalkan',
+            'verifikasi'  => 'Verifikasi',
+            'survei'      => 'Survei',
             default       => 'Menunggu',
         };
 
@@ -166,6 +168,7 @@ class SubmissionController extends Controller
             'cicilan'       => $cicilan,
             'submitted_at'  => $s->created_at?->toIso8601String(),
             'updated_at'    => $s->updated_at?->toIso8601String(),
+            'bank_message'  => $s->bank_message,
         ];
     }
 }

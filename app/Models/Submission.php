@@ -34,6 +34,7 @@ class Submission extends Model
         'skor_kapasitas_utang',
         'omzet_year',
         'omzet_data',
+        'bank_message',
     ];
 
     protected $casts = [

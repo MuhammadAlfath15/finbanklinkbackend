@@ -21,4 +21,9 @@ class Bank extends Model
     {
         return $this->belongsTo(BankCategory::class, 'category_id');
     }
+
+    public function categories()
+    {
+        return $this->belongsToMany(BankCategory::class, 'bank_category_pivot', 'bank_id', 'category_id')->withTimestamps();
+    }
 }

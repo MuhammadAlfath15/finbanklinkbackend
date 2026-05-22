@@ -164,12 +164,25 @@ class AdminContentController extends Controller
     public function banks()
     {
         $rows = Bank::query()
-            ->with('categoryRef:id,name')
+            ->with('categories:id,name')
             ->orderByDesc('id')
             ->get()
             ->map(function (Bank $bank) {
                 $arr = $bank->toArray();
-                $arr['category_name'] = $bank->categoryRef?->name ?? $bank->category ?? 'terdaftar';
+                if ($bank->categories->isEmpty()) {
+                    $arr['category_name'] = $bank->category ?? 'terdaftar';
+                    $arr['category_ids'] = [];
+                    $arr['categories'] = [];
+                } else {
+                    $arr['category_name'] = $bank->categories->pluck('name')->implode(', ');
+                    $arr['category_ids'] = $bank->categories->pluck('id')->toArray();
+                    $arr['categories'] = $bank->categories->map(function ($cat) {
+                        return [
+                            'id' => $cat->id,
+                            'name' => $cat->name,
+                        ];
+                    })->toArray();
+                }
                 return $arr;
             });
         return response()->json($rows);
@@ -178,16 +191,47 @@ class AdminContentController extends Controller
     public function storeBank(Request $request)
     {
         $validated = $this->validateBank($request);
-        $validated = $this->resolveCategoryFields($validated);
-        return response()->json(Bank::create($validated), 201);
+        $validated = $this->resolveCategoryFields($validated, $request);
+        $bank = Bank::create($validated);
+
+        $categoryIds = $request->input('category_ids');
+        if (is_array($categoryIds)) {
+            $bank->categories()->sync($categoryIds);
+        } else if (!empty($validated['category_id'])) {
+            $bank->categories()->sync([$validated['category_id']]);
+        }
+
+        $bank->load('categories');
+        $arr = $bank->toArray();
+        $arr['category_name'] = $bank->categories->pluck('name')->implode(', ');
+        $arr['category_ids'] = $bank->categories->pluck('id')->toArray();
+        $arr['categories'] = $bank->categories->map(fn($cat) => ['id' => $cat->id, 'name' => $cat->name])->toArray();
+
+        return response()->json($arr, 201);
     }
 
     public function updateBank(Request $request, Bank $bank)
     {
         $validated = $this->validateBank($request, true);
-        $validated = $this->resolveCategoryFields($validated);
+        $validated = $this->resolveCategoryFields($validated, $request);
         $bank->update($validated);
-        return response()->json($bank);
+
+        if ($request->has('category_ids')) {
+            $categoryIds = $request->input('category_ids');
+            if (is_array($categoryIds)) {
+                $bank->categories()->sync($categoryIds);
+            } else {
+                $bank->categories()->sync([]);
+            }
+        }
+
+        $bank->load('categories');
+        $arr = $bank->toArray();
+        $arr['category_name'] = $bank->categories->pluck('name')->implode(', ');
+        $arr['category_ids'] = $bank->categories->pluck('id')->toArray();
+        $arr['categories'] = $bank->categories->map(fn($cat) => ['id' => $cat->id, 'name' => $cat->name])->toArray();
+
+        return response()->json($arr);
     }
 
     public function destroyBank(Bank $bank)
@@ -286,7 +330,7 @@ class AdminContentController extends Controller
 
     public function destroyBankCategory(BankCategory $category)
     {
-        $inUse = Bank::query()->where('category_id', $category->id)->exists();
+        $inUse = $category->banks()->exists() || Bank::query()->where('category_id', $category->id)->exists();
         if ($inUse) {
             return response()->json(['message' => 'Kategori masih dipakai oleh kartu bank. Pindahkan dulu kartunya.'], 422);
         }
@@ -300,6 +344,8 @@ class AdminContentController extends Controller
             'nama_bank' => 'required|string|max:160',
             'category' => 'nullable|string|max:80',
             'category_id' => 'nullable|exists:bank_categories,id',
+            'category_ids' => 'nullable|array',
+            'category_ids.*' => 'exists:bank_categories,id',
             'nama_produk' => 'required|string|max:160',
             'bunga' => 'required|string|max:120',
             'cicilan' => 'required|string|max:120',
@@ -322,8 +368,26 @@ class AdminContentController extends Controller
         return $request->validate($rules);
     }
 
-    private function resolveCategoryFields(array $validated): array
+    private function resolveCategoryFields(array $validated, Request $request): array
     {
+        if ($request->has('category_ids')) {
+            $ids = $request->input('category_ids', []);
+            if (!is_array($ids)) {
+                $ids = [];
+            }
+            if (!empty($ids)) {
+                $firstCategory = BankCategory::find($ids[0]);
+                if ($firstCategory) {
+                    $validated['category_id'] = $firstCategory->id;
+                    $validated['category'] = $firstCategory->name;
+                }
+            } else {
+                $validated['category_id'] = null;
+                $validated['category'] = null;
+            }
+            return $validated;
+        }
+
         if (!empty($validated['category_id'])) {
             $category = BankCategory::find($validated['category_id']);
             if ($category) {

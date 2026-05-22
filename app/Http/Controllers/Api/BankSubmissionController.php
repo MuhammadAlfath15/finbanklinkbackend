@@ -50,7 +50,7 @@ class BankSubmissionController extends Controller
         }
 
         $request->validate([
-            'status' => 'required|string|in:disetujui,ditolak',
+            'status' => 'required|string|in:verifikasi,survei,disetujui,ditolak',
             'message' => 'nullable|string'
         ]);
 
@@ -59,15 +59,23 @@ class BankSubmissionController extends Controller
             return response()->json(['message' => 'Pengajuan tidak ditemukan.'], 404);
         }
 
-        if ($submission->status !== 'menunggu') {
+        if (in_array($submission->status, ['disetujui', 'ditolak', 'dibatalkan'])) {
             return response()->json(['message' => 'Status pengajuan sudah pernah diputuskan.'], 422);
         }
 
         $submission->status = $request->status;
+        $submission->bank_message = $request->message;
         $submission->save();
 
         $bankName = $submission->bank ? $submission->bank->nama_bank : 'Admin Bank';
-        $statusText = $request->status === 'disetujui' ? 'Disetujui' : 'Ditolak';
+        
+        $statusText = match ($request->status) {
+            'verifikasi' => 'Mulai Verifikasi',
+            'survei'     => 'Tahap Survei',
+            'disetujui'  => 'Disetujui',
+            'ditolak'    => 'Ditolak',
+            default      => ucfirst($request->status),
+        };
         
         Notification::create([
             'user_id' => $submission->user_id,
@@ -98,6 +106,8 @@ class BankSubmissionController extends Controller
             'disetujui'  => 'Disetujui',
             'ditolak'    => 'Ditolak',
             'dibatalkan' => 'Dibatalkan',
+            'verifikasi' => 'Verifikasi',
+            'survei'     => 'Survei',
             default      => 'Menunggu',
         };
 
@@ -117,6 +127,7 @@ class BankSubmissionController extends Controller
             'address'            => $s->alamat_usaha ?: '—',
             'skor_total'         => $s->skor_total,
             'bank_nama'          => $s->bank?->nama_bank,
+            'bank_message'       => $s->bank_message,
         ];
     }
 
@@ -165,22 +176,46 @@ class BankSubmissionController extends Controller
             ] : null,
         ]));
 
+        $otherActive = Submission::with('bank')
+            ->where('user_id', $s->user_id)
+            ->where('id', '!=', $s->id)
+            ->whereIn('status', ['menunggu', 'verifikasi', 'survei'])
+            ->get()
+            ->map(function (Submission $other) {
+                $ref = $other->reference_code ?: sprintf('REQ-%s-%06d', $other->created_at?->format('Y') ?? date('Y'), $other->id);
+                $statusLabel = match ($other->status) {
+                    'verifikasi' => 'Verifikasi',
+                    'survei'     => 'Survei',
+                    default      => 'Menunggu',
+                };
+                return [
+                    'reference_id' => $ref,
+                    'nama_bank'    => $other->bank ? $other->bank->nama_bank : 'Bank Lain',
+                    'nama_produk'  => $other->nama_produk ?? ($other->bank ? $other->bank->nama_produk : '—'),
+                    'nominal'      => (int) $other->nominal_pinjaman,
+                    'status'       => $statusLabel,
+                    'date'         => $other->created_at?->translatedFormat('d M Y') ?? '',
+                ];
+            })
+            ->toArray();
+
         return array_merge($list, [
-            'ktp_nik'            => $s->ktp_nik,
-            'pemohon_alamat'     => $s->pemohon_alamat,
-            'cicilan_per_bulan'  => $s->cicilan_per_bulan,
-            'health'             => $health,
-            'health_labels'      => [
+            'ktp_nik'                  => $s->ktp_nik,
+            'pemohon_alamat'           => $s->pemohon_alamat,
+            'cicilan_per_bulan'        => $s->cicilan_per_bulan,
+            'health'                   => $health,
+            'health_labels'            => [
                 'kolektibilitas' => $kolekLabel,
                 'legalitas'      => $legalLabel,
                 'riwayat'        => 'Dari data pengajuan',
             ],
-            'omzet'              => [
+            'omzet'                    => [
                 'year' => $omzetYear,
                 'data' => $omzetData,
             ],
-            'documents'          => $documents,
-            'user_email'         => $s->user?->email,
+            'documents'                => $documents,
+            'user_email'               => $s->user?->email,
+            'other_active_submissions' => $otherActive,
         ]);
     }
 }
