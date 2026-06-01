@@ -19,7 +19,7 @@ class AdminContentController extends Controller
     public function publicAds()
     {
         return response()->json(
-            Ad::query()->where('is_active', true)->orderBy('sort_order')->orderByDesc('id')->get()
+            Ad::query()->where('is_active', true)->orderByRaw('sort_order = 0, sort_order ASC')->orderBy('id', 'asc')->get()
                 ->map(fn(Ad $ad) => $this->transformAd($ad))
         );
     }
@@ -29,8 +29,8 @@ class AdminContentController extends Controller
         return response()->json(
             Article::query()
                 ->where('is_active', true)
-                ->orderBy('sort_order')
-                ->orderByDesc('id')
+                ->orderByRaw('sort_order = 0, sort_order ASC')
+                ->orderBy('id', 'asc')
                 ->get()
                 ->map(fn(Article $article) => $this->transformArticle($article))
         );
@@ -39,7 +39,7 @@ class AdminContentController extends Controller
     public function ads()
     {
         return response()->json(
-            Ad::query()->orderBy('sort_order')->orderByDesc('id')->get()
+            Ad::query()->orderByRaw('sort_order = 0, sort_order ASC')->orderBy('id', 'asc')->get()
                 ->map(fn(Ad $ad) => $this->transformAd($ad))
         );
     }
@@ -100,8 +100,8 @@ class AdminContentController extends Controller
     {
         return response()->json(
             Article::query()
-                ->orderBy('sort_order')
-                ->orderByDesc('id')
+                ->orderByRaw('sort_order = 0, sort_order ASC')
+                ->orderBy('id', 'asc')
                 ->get()
                 ->map(fn(Article $article) => $this->transformArticle($article))
         );
@@ -183,6 +183,9 @@ class AdminContentController extends Controller
                         ];
                     })->toArray();
                 }
+                $arr['promo_image_url'] = !empty($bank->promo_image) 
+                    ? ($this->isAbsoluteUrl($bank->promo_image) ? $bank->promo_image : \Storage::disk('public')->url($bank->promo_image))
+                    : null;
                 return $arr;
             });
         return response()->json($rows);
@@ -206,6 +209,9 @@ class AdminContentController extends Controller
         $arr['category_name'] = $bank->categories->pluck('name')->implode(', ');
         $arr['category_ids'] = $bank->categories->pluck('id')->toArray();
         $arr['categories'] = $bank->categories->map(fn($cat) => ['id' => $cat->id, 'name' => $cat->name])->toArray();
+        $arr['promo_image_url'] = !empty($bank->promo_image) 
+            ? ($this->isAbsoluteUrl($bank->promo_image) ? $bank->promo_image : \Storage::disk('public')->url($bank->promo_image))
+            : null;
 
         return response()->json($arr, 201);
     }
@@ -214,6 +220,14 @@ class AdminContentController extends Controller
     {
         $validated = $this->validateBank($request, true);
         $validated = $this->resolveCategoryFields($validated, $request);
+
+        if ($request->hasFile('promo_image')) {
+            if (!empty($bank->promo_image) && !$this->isAbsoluteUrl($bank->promo_image)) {
+                \Storage::disk('public')->delete($bank->promo_image);
+            }
+            $validated['promo_image'] = $request->file('promo_image')->store('banks', 'public');
+        }
+
         $bank->update($validated);
 
         if ($request->has('category_ids')) {
@@ -230,6 +244,9 @@ class AdminContentController extends Controller
         $arr['category_name'] = $bank->categories->pluck('name')->implode(', ');
         $arr['category_ids'] = $bank->categories->pluck('id')->toArray();
         $arr['categories'] = $bank->categories->map(fn($cat) => ['id' => $cat->id, 'name' => $cat->name])->toArray();
+        $arr['promo_image_url'] = !empty($bank->promo_image) 
+            ? ($this->isAbsoluteUrl($bank->promo_image) ? $bank->promo_image : \Storage::disk('public')->url($bank->promo_image))
+            : null;
 
         return response()->json($arr);
     }
@@ -243,15 +260,12 @@ class AdminContentController extends Controller
     public function usersWithDocuments()
     {
         $profiles = BusinessProfile::query()->get()->keyBy('user_id');
-        $submissions = Submission::query()->select(['user_id', 'ktp_upload_path', 'nib_upload_path'])->get()->groupBy('user_id');
 
         $users = User::query()
-            ->where('role', 'user')
             ->orderByDesc('id')
             ->get()
-            ->map(function (User $user) use ($profiles, $submissions) {
+            ->map(function (User $user) use ($profiles) {
                 $profile = $profiles->get($user->id);
-                $submissionRows = $submissions->get($user->id, collect());
 
                 $documents = [];
                 $profileKeys = [
@@ -264,15 +278,6 @@ class AdminContentController extends Controller
                         if (!empty($profile->$key)) {
                             $documents[] = $this->buildDocPayload($key, $profile->$key);
                         }
-                    }
-                }
-
-                foreach ($submissionRows as $row) {
-                    if (!empty($row->ktp_upload_path)) {
-                        $documents[] = $this->buildDocPayload('ktp_upload_path', $row->ktp_upload_path);
-                    }
-                    if (!empty($row->nib_upload_path)) {
-                        $documents[] = $this->buildDocPayload('nib_upload_path', $row->nib_upload_path);
                     }
                 }
 
@@ -357,6 +362,8 @@ class AdminContentController extends Controller
             'tenor_min' => 'nullable|integer|min:1',
             'tenor_max' => 'nullable|integer|min:1',
             'bunga_persen' => 'nullable|numeric|min:0|max:100',
+            'is_promoted' => 'nullable|boolean',
+            'promo_image' => 'nullable|file|mimes:jpg,jpeg,png|max:5120',
             'syarat' => 'nullable|array',
             'syarat.*' => 'string|max:255',
         ];

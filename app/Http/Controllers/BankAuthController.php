@@ -3,11 +3,11 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use App\Models\Admin;
+use App\Models\BankUser;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 
-class AdminAuthController extends Controller
+class BankAuthController extends Controller
 {
     public function login(Request $request)
     {
@@ -20,19 +20,19 @@ class AdminAuthController extends Controller
             return response()->json(['message' => $validator->errors()->first()], 422);
         }
 
-        $admin = Admin::where('email', $request->email)->first();
-        if (!$admin || !Hash::check($request->password, $admin->password)) {
-            return response()->json(['message' => 'Email atau password admin salah.'], 401);
+        $bankUser = BankUser::where('email', $request->email)->first();
+        if (!$bankUser || !Hash::check($request->password, $bankUser->password)) {
+            return response()->json(['message' => 'Email atau password bank salah.'], 401);
         }
 
-        $token = $admin->createToken('admin_token')->plainTextToken;
+        $token = $bankUser->createToken('bank_token')->plainTextToken;
 
         return response()->json([
             'success' => true,
-            'message' => 'Login admin berhasil',
+            'message' => 'Login bank berhasil',
             'token' => $token,
-            'role' => 'admin',
-            'user' => $admin,
+            'role' => 'bank',
+            'user' => $bankUser,
         ]);
     }
 }

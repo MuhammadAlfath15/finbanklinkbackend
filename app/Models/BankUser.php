@@ -2,17 +2,16 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
-use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
-class User extends Authenticatable
+class BankUser extends Authenticatable
 {
-    /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, Notifiable;
+
+    protected $table = 'bank_users';
 
     /**
      * The attributes that are mass assignable.
@@ -23,10 +22,6 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
-        'phone',
-        'bio',
-        'avatar',
-        'role',
         'bank_id',
     ];
 
@@ -45,7 +40,8 @@ class User extends Authenticatable
      *
      * @return array<string, string>
      */
-    protected function casts(): array {
+    protected function casts(): array
+    {
         return [
             'password' => 'hashed',
         ];
@@ -58,6 +54,14 @@ class User extends Authenticatable
      */
     public function getRoleAttribute(): string
     {
-        return 'user';
+        return 'bank';
+    }
+
+    /**
+     * Relasi ke Bank.
+     */
+    public function bank()
+    {
+        return $this->belongsTo(Bank::class, 'bank_id');
     }
 }

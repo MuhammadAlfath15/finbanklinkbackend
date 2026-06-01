@@ -19,6 +19,9 @@ class BankController extends Controller
 
         foreach ($banks as $bank) {
             $arr = $bank->toArray();
+            $arr['promo_image_url'] = !empty($bank->promo_image) 
+                ? (str_starts_with($bank->promo_image, 'http') ? $bank->promo_image : \Storage::disk('public')->url($bank->promo_image))
+                : null;
             
             if ($bank->categories->isEmpty()) {
                 $arr['category_id'] = $bank->category_id;

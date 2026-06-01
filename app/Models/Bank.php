@@ -10,11 +10,12 @@ class Bank extends Model
         'nama_bank', 'category', 'category_id', 'nama_produk', 'bunga', 'cicilan',
         'skor_kecocokan', 'min_score', 'deskripsi',
         'plafon_min', 'plafon_max', 'tenor_min', 'tenor_max',
-        'bunga_persen', 'syarat',
+        'bunga_persen', 'syarat', 'is_promoted', 'promo_image',
     ];
 
     protected $casts = [
         'syarat' => 'array',
+        'is_promoted' => 'boolean',
     ];
 
     public function categoryRef()

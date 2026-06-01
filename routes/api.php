@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Auth;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\AdminAuthController;
+use App\Http\Controllers\BankAuthController;
 use App\Http\Controllers\Api\AdminContentController;
 use App\Http\Controllers\Api\OtpController;
 
@@ -16,6 +17,7 @@ Route::get('/banks', [\App\Http\Controllers\Api\BankController::class, 'index'])
 
 // Gunakan format class seperti ini agar lebih aman
 Route::post('/login', [AuthController::class, 'login']);
+Route::post('/bank/login', [BankAuthController::class, 'login']);
 Route::post('/admin/login', [AdminAuthController::class, 'login']);
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);

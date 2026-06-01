@@ -40,7 +40,7 @@ class AuthController extends Controller
 
    public function login(Request $request)
 {
-    // 1. Validasi input — pakai Validator::make agar bisa return JSON, bukan redirect
+    // 1. Validasi input
     $validator = Validator::make($request->all(), [
         'email'    => 'required|email',
         'password' => 'required',
@@ -50,26 +50,23 @@ class AuthController extends Controller
         return response()->json(['message' => $validator->errors()->first()], 422);
     }
 
-    $credentials = $request->only('email', 'password');
-
-    // 2. Coba login
-    if (Auth::attempt($credentials)) {
-        $user  = Auth::user();
-        $token = $user->createToken('auth_token')->plainTextToken;
-
+    // 2. Coba login dari model User (hanya tabel users)
+    $user = User::where('email', $request->email)->first();
+    if (!$user || !Hash::check($request->password, $user->password)) {
         return response()->json([
-            'success' => true,
-            'message' => 'Login berhasil',
-            'token'   => $token,
-            'role'    => $user->role ?? 'user', // fallback 'user' kalau kolom role null
-            'user'    => $user,
-        ], 200);
+            'message' => 'Email atau Password salah!',
+        ], 401);
     }
 
-    // 3. Jika gagal
+    $token = $user->createToken('auth_token')->plainTextToken;
+
     return response()->json([
-        'message' => 'Email atau Password salah!',
-    ], 401);
+        'success' => true,
+        'message' => 'Login berhasil',
+        'token'   => $token,
+        'role'    => 'user',
+        'user'    => $user,
+    ], 200);
 }
 
 public function forgotPassword(Request $request)
