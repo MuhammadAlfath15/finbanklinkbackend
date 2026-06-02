@@ -79,4 +79,5 @@ Route::middleware(['auth:sanctum', 'admin'])->prefix('admin')->group(function ()
     Route::delete('/bank-categories/{category}', [AdminContentController::class, 'destroyBankCategory']);
 
     Route::get('/users/documents', [AdminContentController::class, 'usersWithDocuments']);
+    Route::post('/users/documents/audit', [AdminContentController::class, 'auditDocument']);
 });

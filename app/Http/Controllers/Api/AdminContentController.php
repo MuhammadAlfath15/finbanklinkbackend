@@ -276,7 +276,7 @@ class AdminContentController extends Controller
                 if ($profile) {
                     foreach ($profileKeys as $key) {
                         if (!empty($profile->$key)) {
-                            $documents[] = $this->buildDocPayload($key, $profile->$key);
+                            $documents[] = $this->buildDocPayload($key, $profile->$key, $profile);
                         }
                     }
                 }
@@ -413,7 +413,7 @@ class AdminContentController extends Controller
         return $validated;
     }
 
-    private function buildDocPayload(string $type, string $path): array
+    private function buildDocPayload(string $type, string $path, BusinessProfile $profile): array
     {
         $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
         return [
@@ -421,7 +421,69 @@ class AdminContentController extends Controller
             'path' => $path,
             'url' => Storage::disk('public')->url($path),
             'extension' => $ext,
+            'status' => $profile->getDocStatus($type),
+            'feedback' => $profile->getDocFeedback($type),
         ];
+    }
+
+    public function auditDocument(Request $request)
+    {
+        $validated = $request->validate([
+            'user_id'       => 'required|exists:users,id',
+            'document_type' => 'required|string',
+            'status'        => 'required|string|in:pending,approved,rejected',
+            'feedback'      => 'nullable|string|max:1000',
+        ]);
+
+        $profile = BusinessProfile::firstOrCreate(['user_id' => $validated['user_id']]);
+
+        // Update status array
+        $statuses = $profile->document_statuses ?? [];
+        $statuses[$validated['document_type']] = $validated['status'];
+        $profile->document_statuses = $statuses;
+
+        // Update feedback array
+        $feedbacks = $profile->document_feedbacks ?? [];
+        if ($validated['status'] === 'rejected') {
+            $feedbacks[$validated['document_type']] = $validated['feedback'] ?? 'Dokumen tidak sesuai';
+        } else {
+            unset($feedbacks[$validated['document_type']]);
+        }
+        $profile->document_feedbacks = $feedbacks;
+
+        // Recalculate scores because document status might affect skor_legalitas, etc.
+        $profile->recalculateScores();
+        $profile->save();
+
+        // Create a system notification for the user
+        try {
+            $docLabel = strtoupper(str_replace(['_path', '_upload'], '', $validated['document_type']));
+            $statusText = $validated['status'] === 'approved' ? 'DISETUJUI' : ($validated['status'] === 'rejected' ? 'DITOLAK' : 'DITINJAU');
+            $msg = "Dokumen {$docLabel} Anda telah {$statusText} oleh Admin.";
+            if ($validated['status'] === 'rejected' && !empty($validated['feedback'])) {
+                $msg .= " Catatan: " . $validated['feedback'];
+            }
+
+            \App\Models\Notification::create([
+                'user_id' => $validated['user_id'],
+                'title' => "Audit Berkas: {$docLabel}",
+                'subject' => 'audit',
+                'message' => $msg,
+            ]);
+        } catch (\Exception $e) {
+            // ignore notification fail
+        }
+
+        return response()->json([
+            'message' => 'Audit dokumen berhasil diperbarui',
+            'scores' => [
+                'skor_legalitas' => $profile->skor_legalitas,
+                'skor_profitabilitas' => $profile->skor_profitabilitas,
+                'skor_kolektibilitas' => $profile->skor_kolektibilitas,
+                'skor_keberlanjutan' => $profile->skor_keberlanjutan,
+                'skor_total' => $profile->skor_total,
+            ]
+        ]);
     }
 
     private function transformAd(Ad $ad): array

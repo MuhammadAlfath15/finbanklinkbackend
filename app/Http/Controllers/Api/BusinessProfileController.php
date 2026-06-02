@@ -19,6 +19,10 @@ class BusinessProfileController extends Controller
         $user = $request->user();
         $bp   = BusinessProfile::firstOrCreate(['user_id' => $user->id]);
 
+        // Recalculate and save scores to ensure they are synchronized with the new audit rules on fetch
+        $bp->recalculateScores();
+        $bp->save();
+
         return response()->json($this->buildResponse($bp));
     }
 
@@ -68,6 +72,9 @@ class BusinessProfileController extends Controller
             'bukti_pelunasan' => 'bukti_pelunasan_path',
         ];
 
+        $statuses = $bp->document_statuses ?? [];
+        $feedbacks = $bp->document_feedbacks ?? [];
+
         foreach ($fileMap as $requestKey => $column) {
             if ($request->hasFile($requestKey)) {
                 if ($bp->$column) {
@@ -75,8 +82,18 @@ class BusinessProfileController extends Controller
                 }
                 $path = $request->file($requestKey)->store($dir, 'public');
                 $bp->$column = $path;
+
+                // Set status to pending on new upload
+                $statuses[$column] = 'pending';
+                // Clear old feedback
+                if (isset($feedbacks[$column])) {
+                    unset($feedbacks[$column]);
+                }
             }
         }
+
+        $bp->document_statuses = $statuses;
+        $bp->document_feedbacks = $feedbacks;
 
         // ── Simpan nilai numerik ──────────────────────────────────────────────
         if ($request->filled('omzet_bulan_ini')) {
@@ -95,8 +112,7 @@ class BusinessProfileController extends Controller
         }
 
         // ── Hitung skor ───────────────────────────────────────────────────────
-        $scores = $this->calculateScores($bp, $user->id);
-        $bp->fill($scores);
+        $bp->recalculateScores();
         $bp->save();
 
         return response()->json([
@@ -115,13 +131,13 @@ class BusinessProfileController extends Controller
     {
         // ── 1. Legalitas (max 100) ─────────────────────────────────────────
         $legalitas = 20; // base: sudah daftar
-        if ($bp->nib_path)  $legalitas += 40;
-        if ($bp->npwp_path) $legalitas += 40;
+        if ($bp->nib_path && $bp->getDocStatus('nib_path') === 'approved')  $legalitas += 40;
+        if ($bp->npwp_path && $bp->getDocStatus('npwp_path') === 'approved') $legalitas += 40;
         $legalitas = min($legalitas, 100);
 
         // ── 2. Profitabilitas (max 100) ────────────────────────────────────
         $profitabilitas = 30; // base
-        if ($bp->rekening_path) $profitabilitas += 30;
+        if ($bp->rekening_path && $bp->getDocStatus('rekening_path') === 'approved') $profitabilitas += 30;
         if ($bp->omzet_bulan_ini > 0) {
             // Omzet >= 10 juta = +40, 5-10 juta = +25, < 5 juta = +10
             if ($bp->omzet_bulan_ini >= 10_000_000)      $profitabilitas += 40;
@@ -168,7 +184,7 @@ class BusinessProfileController extends Controller
 
         // ── 4. Kolektibilitas (max 100) ────────────────────────────────────
         $kolektibilitas = 50; // base: asumsi tidak ada tunggakan
-        if ($bp->bukti_pelunasan_path) $kolektibilitas += 30;
+        if ($bp->bukti_pelunasan_path && $bp->getDocStatus('bukti_pelunasan_path') === 'approved') $kolektibilitas += 30;
         if ($bp->cicilan_berjalan !== null) {
             // Ada cicilan tapi bukan nol = risiko, tapi terbuka = +10
             $kolektibilitas += 10;
@@ -184,8 +200,8 @@ class BusinessProfileController extends Controller
 
         // ── 5. Keberlanjutan (max 100) ─────────────────────────────────────
         $keberlanjutan = 20; // base
-        if ($bp->foto_usaha_path) $keberlanjutan += 40;
-        if ($bp->kontrak_path)    $keberlanjutan += 40;
+        if ($bp->foto_usaha_path && $bp->getDocStatus('foto_usaha_path') === 'approved') $keberlanjutan += 40;
+        if ($bp->kontrak_path && $bp->getDocStatus('kontrak_path') === 'approved')    $keberlanjutan += 40;
         $keberlanjutan = min($keberlanjutan, 100);
 
         // ── 6. Kapasitas Utang (max 100) ───────────────────────────────────
@@ -201,7 +217,7 @@ class BusinessProfileController extends Controller
                 $kapasitasUtang = 85; // tidak ada cicilan = sangat baik
             }
         }
-        if ($bp->bukti_pelunasan_path) $kapasitasUtang = min($kapasitasUtang + 10, 100);
+        if ($bp->bukti_pelunasan_path && $bp->getDocStatus('bukti_pelunasan_path') === 'approved') $kapasitasUtang = min($kapasitasUtang + 10, 100);
         $kapasitasUtang = min($kapasitasUtang, 100);
 
         $total = $legalitas + $profitabilitas + $trenOmzet + $kolektibilitas + $keberlanjutan + $kapasitasUtang;
@@ -242,6 +258,9 @@ class BusinessProfileController extends Controller
             'alamat_usaha'         => $bp->alamat_usaha,
             'lama_usaha'           => $bp->lama_usaha,
             'jumlah_karyawan'      => $bp->jumlah_karyawan,
+            // audit
+            'document_statuses'    => $bp->document_statuses ?? (object)[],
+            'document_feedbacks'   => $bp->document_feedbacks ?? (object)[],
             // skor
             'skor_profitabilitas'  => $bp->skor_profitabilitas,
             'skor_legalitas'       => $bp->skor_legalitas,
