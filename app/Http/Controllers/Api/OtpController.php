@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
 class OtpController extends Controller
 {
@@ -139,5 +140,92 @@ class OtpController extends Controller
         $clean = preg_replace('/\D/', '', $phone);
         if (strlen($clean) < 8) return $phone;
         return substr($clean, 0, 4) . str_repeat('*', strlen($clean) - 8) . substr($clean, -4);
+    }
+
+    /**
+     * Generate & kirim OTP pengajuan pinjaman ke Email user
+     *
+     * POST /api/otp/send-loan-email
+     * Middleware: auth:sanctum
+     */
+    public function sendLoanOtpEmail(Request $request)
+    {
+        $user = Auth::user();
+
+        Log::info('OtpController@sendLoanOtpEmail: dipanggil', [
+            'user_id' => $user->id,
+            'email'   => $user->email ?? 'NULL',
+        ]);
+
+        // ── Validasi email ─────────────────────────────────────────────
+        if (empty($user->email)) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Alamat email belum diisi di profil kamu. Mohon lengkapi profil terlebih dahulu.',
+            ], 422);
+        }
+
+        // ── Generate 6-digit OTP ───────────────────────────────────────
+        $otp = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+
+        // ── Simpan ke DB ───────────────────────────────────────────────
+        try {
+            DB::table('otps')->updateOrInsert(
+                [
+                    'phone' => $user->phone ?? 'no-phone-' . $user->id,
+                    'type'  => 'loan_application',
+                ],
+                [
+                    'email'      => $user->email,
+                    'otp'        => $otp,
+                    'expires_at' => now()->addMinutes(5),
+                    'updated_at' => now(),
+                    'created_at' => now(),
+                ]
+            );
+        } catch (\Throwable $e) {
+            Log::error('OtpController@sendLoanOtpEmail: DB error', ['error' => $e->getMessage()]);
+
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Terjadi kesalahan database. Pastikan sudah menjalankan `php artisan migrate`.',
+                'detail'  => $e->getMessage(),
+            ], 500);
+        }
+
+        // ── Kirim via Email ────────────────────────────────────────────
+        try {
+            Mail::raw("🔐 FinBankLink\n\nKode OTP pengajuan pinjaman kamu adalah: {$otp}\n\nKode berlaku selama 5 menit. Jangan bagikan kode ini kepada siapapun.", function ($message) use ($user) {
+                $message->to($user->email)
+                    ->subject('Kode OTP Pengajuan Pinjaman FinBankLink');
+            });
+        } catch (\Throwable $e) {
+            Log::error('OtpController@sendLoanOtpEmail: Mail error', ['error' => $e->getMessage()]);
+
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Gagal mengirim OTP via Email. Silakan periksa konfigurasi mail server Anda.',
+                'detail'  => $e->getMessage(),
+            ], 500);
+        }
+
+        return response()->json([
+            'status'  => 'success',
+            'message' => 'OTP berhasil dikirim ke Email kamu.',
+            'email'   => $this->maskEmail($user->email),
+        ]);
+    }
+
+    /**
+     * Mask email: u***r@example.com
+     */
+    private function maskEmail(string $email): string
+    {
+        $parts = explode('@', $email);
+        if (count($parts) < 2) return $email;
+        $name = $parts[0];
+        $domain = $parts[1];
+        if (strlen($name) < 3) return $email;
+        return substr($name, 0, 1) . str_repeat('*', strlen($name) - 2) . substr($name, -1) . '@' . $domain;
     }
 }

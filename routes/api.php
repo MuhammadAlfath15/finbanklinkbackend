@@ -13,6 +13,10 @@ Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');
 
+Route::get('/login', function () {
+    return response()->json(['message' => 'Unauthenticated.'], 401);
+})->name('login');
+
 Route::get('/banks', [\App\Http\Controllers\Api\BankController::class, 'index']);
 
 // Gunakan format class seperti ini agar lebih aman
@@ -35,8 +39,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/omzet', [\App\Http\Controllers\Api\OmzetController::class, 'index']);
     Route::post('/omzet', [\App\Http\Controllers\Api\OmzetController::class, 'store']);
 
-    // OTP Pengajuan Pinjaman (via WhatsApp)
+    // OTP Pengajuan Pinjaman (via WhatsApp & Email)
     Route::post('/otp/send-loan',   [OtpController::class, 'sendLoanOtp']);
+    Route::post('/otp/send-loan-email', [OtpController::class, 'sendLoanOtpEmail']);
     Route::post('/otp/verify-loan', [OtpController::class, 'verifyLoanOtp']);
 
     // Business Profile & Health Score
@@ -47,10 +52,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/submissions', [\App\Http\Controllers\Api\SubmissionController::class, 'index']);
     Route::post('/submissions', [\App\Http\Controllers\Api\SubmissionController::class, 'store']);
     Route::delete('/submissions/{id}', [\App\Http\Controllers\Api\SubmissionController::class, 'cancel']);
+    Route::post('/submissions/{id}/message', [\App\Http\Controllers\Api\SubmissionController::class, 'postMessage']);
 
     Route::get('/bank/submissions', [\App\Http\Controllers\Api\BankSubmissionController::class, 'index']);
     Route::get('/bank/submissions/{id}', [\App\Http\Controllers\Api\BankSubmissionController::class, 'show']);
     Route::patch('/bank/submissions/{id}/status', [\App\Http\Controllers\Api\BankSubmissionController::class, 'updateStatus']);
+    Route::post('/bank/submissions/{id}/message', [\App\Http\Controllers\Api\BankSubmissionController::class, 'postMessage']);
 
     // Notifications
     Route::get('/notifications', [\App\Http\Controllers\Api\NotificationController::class, 'index']);

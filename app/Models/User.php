@@ -60,4 +60,12 @@ class User extends Authenticatable
     {
         return 'user';
     }
+
+    /**
+     * Relasi ke BusinessProfile.
+     */
+    public function businessProfile()
+    {
+        return $this->hasOne(BusinessProfile::class, 'user_id', 'id');
+    }
 }

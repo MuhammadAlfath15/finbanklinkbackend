@@ -17,7 +17,7 @@ class BankSubmissionController extends Controller
             return response()->json(['message' => 'Akses ditolak.'], 403);
         }
 
-        $q = Submission::with(['user:id,name,email,phone', 'bank:id,nama_bank,nama_produk'])
+        $q = Submission::with(['user.businessProfile', 'bank:id,nama_bank,nama_produk'])
             ->orderByDesc('created_at');
 
         if (!empty($user->bank_id)) {
@@ -34,7 +34,7 @@ class BankSubmissionController extends Controller
             return response()->json(['message' => 'Akses ditolak.'], 403);
         }
 
-        $submission = Submission::with(['user:id,name,email,phone', 'bank'])->findOrFail($id);
+        $submission = Submission::with(['user.businessProfile', 'bank'])->findOrFail($id);
         if (!empty($user->bank_id) && (int) $submission->bank_id !== (int) $user->bank_id) {
             return response()->json(['message' => 'Pengajuan tidak ditemukan.'], 404);
         }
@@ -86,7 +86,7 @@ class BankSubmissionController extends Controller
 
         return response()->json([
             'message' => 'Status berhasil diperbarui',
-            'data'    => $this->toListItem($submission->fresh(['user:id,name,email,phone', 'bank:id,nama_bank,nama_produk'])),
+            'data'    => $this->toListItem($submission->fresh(['user.businessProfile', 'bank:id,nama_bank,nama_produk'])),
         ]);
     }
 
@@ -111,11 +111,13 @@ class BankSubmissionController extends Controller
             default      => 'Menunggu',
         };
 
+        $bp = $s->user?->businessProfile;
+
         return [
             'id'                 => $ref,
             'submission_id'      => $s->id,
             'date'               => $s->created_at?->translatedFormat('d M Y') ?? '',
-            'umkm'               => $s->nama_usaha ?: ($s->user?->name ?? 'UMKM'),
+            'umkm'               => $s->nama_usaha ?: ($bp->nama_usaha ?? ($s->user?->name ?? 'UMKM')),
             'product'            => $s->nama_produk ?? $s->bank?->nama_produk ?? '—',
             'amount'             => (int) $s->nominal_pinjaman,
             'tenor'              => (int) $s->tenor,
@@ -123,11 +125,12 @@ class BankSubmissionController extends Controller
             'status'             => $statusLabel,
             'owner'              => $s->ktp_nama ?? $s->user?->name,
             'phone'              => $s->pemohon_phone ?? $s->user?->phone ?? '—',
-            'businessType'       => $s->bidang_usaha ?: '—',
-            'address'            => $s->alamat_usaha ?: '—',
+            'businessType'       => $s->bidang_usaha ?: ($bp->bidang_usaha ?? '—'),
+            'address'            => $s->alamat_usaha ?: ($bp->alamat_usaha ?? '—'),
             'skor_total'         => $s->skor_total,
             'bank_nama'          => $s->bank?->nama_bank,
             'bank_message'       => $s->bank_message,
+            'user_message'       => $s->user_message,
         ];
     }
 
@@ -216,6 +219,43 @@ class BankSubmissionController extends Controller
             'documents'                => $documents,
             'user_email'               => $s->user?->email,
             'other_active_submissions' => $otherActive,
+        ]);
+    }
+
+    /**
+     * POST /api/bank/submissions/{id}/message — kirim balasan ke nasabah.
+     */
+    public function postMessage(Request $request, int $id)
+    {
+        $user = $request->user();
+        if (($user->role ?? '') !== 'bank') {
+            return response()->json(['message' => 'Akses ditolak.'], 403);
+        }
+
+        $submission = Submission::findOrFail($id);
+        if (!empty($user->bank_id) && (int) $submission->bank_id !== (int) $user->bank_id) {
+            return response()->json(['message' => 'Pengajuan tidak ditemukan.'], 404);
+        }
+
+        $request->validate([
+            'message' => 'required|string|max:1000',
+        ]);
+
+        $submission->bank_message = $request->message;
+        $submission->save();
+
+        $bankName = $submission->bank ? $submission->bank->nama_bank : 'Petugas Bank';
+
+        Notification::create([
+            'user_id' => $submission->user_id,
+            'title' => "Balasan dari {$bankName}",
+            'subject' => "Pesan Baru",
+            'message' => $request->message,
+        ]);
+
+        return response()->json([
+            'message' => 'Balasan berhasil dikirim.',
+            'data' => $this->toListItem($submission->fresh(['user.businessProfile', 'bank:id,nama_bank,nama_produk'])),
         ]);
     }
 }

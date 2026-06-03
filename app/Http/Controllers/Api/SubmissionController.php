@@ -104,9 +104,9 @@ class SubmissionController extends Controller
             'status'                => 'menunggu',
             'nominal_pinjaman'      => (string) (int) $request->nominal_pinjaman,
             'tenor'                 => (string) (int) $request->tenor,
-            'nama_usaha'            => $request->nama_usaha,
-            'bidang_usaha'          => $request->bidang_usaha,
-            'alamat_usaha'          => $request->alamat_usaha,
+            'nama_usaha'            => $request->nama_usaha ?: ($bp->nama_usaha ?? null),
+            'bidang_usaha'          => $request->bidang_usaha ?: ($bp->bidang_usaha ?? null),
+            'alamat_usaha'          => $request->alamat_usaha ?: ($bp->alamat_usaha ?? null),
             'pemohon_phone'         => $user->phone,
             'pemohon_alamat'        => $request->pemohon_alamat,
             'cicilan_per_bulan'     => $request->filled('cicilan_per_bulan') ? $request->cicilan_per_bulan : null,
@@ -169,6 +169,32 @@ class SubmissionController extends Controller
             'submitted_at'  => $s->created_at?->toIso8601String(),
             'updated_at'    => $s->updated_at?->toIso8601String(),
             'bank_message'  => $s->bank_message,
+            'user_message'  => $s->user_message,
         ];
+    }
+
+    /**
+     * POST /api/submissions/{id}/message — kirim pesan ke petugas bank.
+     */
+    public function postMessage(Request $request, int $id)
+    {
+        $user = $request->user();
+        if (($user->role ?? 'user') !== 'user') {
+            return response()->json(['message' => 'Hanya untuk akun nasabah.'], 403);
+        }
+
+        $submission = Submission::where('user_id', $user->id)->findOrFail($id);
+        
+        $request->validate([
+            'message' => 'required|string|max:1000',
+        ]);
+
+        $submission->user_message = $request->message;
+        $submission->save();
+
+        return response()->json([
+            'message' => 'Pesan berhasil dikirim ke petugas bank.',
+            'data' => $this->toUserRow($submission),
+        ]);
     }
 }

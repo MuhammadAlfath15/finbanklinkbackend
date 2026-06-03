@@ -35,6 +35,7 @@ class Submission extends Model
         'omzet_year',
         'omzet_data',
         'bank_message',
+        'user_message',
     ];
 
     protected $casts = [
